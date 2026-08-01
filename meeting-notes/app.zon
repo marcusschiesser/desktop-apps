@@ -14,11 +14,11 @@
             .{
                 .label = "main",
                 .title = "Local Meeting Notes",
-                .width = 680,
-                .height = 760,
-                .min_width = 620,
-                .min_height = 620,
-                .restore_state = true,
+                .width = 640,
+                .height = 500,
+                .min_width = 580,
+                .min_height = 460,
+                .restore_state = false,
                 .restore_policy = "center_on_primary",
                 .close_policy = "hide",
                 .views = .{
