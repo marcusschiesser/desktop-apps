@@ -1,25 +1,31 @@
-<column padding="18" gap="16" background="background">
-  <column gap="4">
-    <text><span weight="bold" scale="1.3">Settings</span></text>
-    <text size="sm" foreground="text_muted">OpenAI GPT-5.6 Luna</text>
+<column padding="20" gap="14" background="surface_subtle">
+  <row height="52" gap="12" cross="center">
+    <row width="38" height="38" cross="center" main="center" radius="lg">
+      <icon name="settings" width="24" height="24" foreground="info" />
+    </row>
+    <column gap="2">
+      <text><span weight="bold" scale="1.25">Settings</span></text>
+      <text size="sm" foreground="text_muted">OpenAI GPT-5.6 Luna</text>
+    </column>
+  </row>
+
+  <column padding="18" gap="11" background="surface" radius="xl" label="OpenAI API key settings">
+    <row gap="8" cross="center">
+      <text grow="1"><span weight="bold">OpenAI API key</span></text>
+      <badge variant="secondary" foreground="info">{keyStatus}</badge>
+    </row>
+    <text size="sm" foreground="text_muted" wrap="true">Replace the key used to create meeting summaries.</text>
+    <text-field text="{apiKeyDraft}" placeholder="sk-..." on-input="api_key_changed" on-submit="save_api_key" disabled="{areKeyControlsDisabled}" label="Replace OpenAI API key" />
+    <button size="lg" variant="primary" accent="info" accent-foreground="info_text" focus-ring="info" on-press="save_api_key" disabled="{isBusy}" label="Save OpenAI API key">Save API Key</button>
+    <row gap="8">
+      <button grow="1" variant="outline" icon="external-link" on-press="open_api_keys" label="Open the OpenAI API keys page">Get an API Key</button>
+      <button variant="ghost" foreground="destructive" icon="trash" on-press="delete_api_key" disabled="{areKeyControlsDisabled}" label="Delete saved OpenAI key">Delete Key</button>
+    </row>
+    <text size="sm" foreground="text_muted" wrap="true">{detail}</text>
   </column>
 
-  <panel padding="18" background="surface" radius="lg" border-color="border" label="OpenAI API key settings">
-    <column gap="10">
-      <row gap="8" cross="center">
-        <text grow="1"><span weight="bold">API key</span></text>
-        <badge variant="secondary">{keyStatus}</badge>
-      </row>
-      <text-field text="{apiKeyDraft}" placeholder="sk-..." on-input="api_key_changed" on-submit="save_api_key" disabled="{areKeyControlsDisabled}" label="Replace OpenAI API key" />
-      <button variant="primary" on-press="save_api_key" disabled="{isBusy}" label="Save OpenAI API key">Save API Key</button>
-      <row gap="8">
-        <button grow="1" variant="outline" on-press="open_api_keys" label="Open the OpenAI API keys page">Get an OpenAI API Key</button>
-        <button variant="destructive" on-press="delete_api_key" disabled="{areKeyControlsDisabled}" label="Delete saved OpenAI key">Delete Key</button>
-      </row>
-      <text size="sm" foreground="text_muted" wrap="true">{detail}</text>
-    </column>
-  </panel>
-
-  <alert text="The key is stored in macOS Keychain. Audio stays on this Mac; only meeting transcripts are sent to OpenAI for summarization." />
-  <spacer grow="1" />
+  <row padding="16" gap="12" cross="center" background="surface_pressed" radius="lg" label="API key privacy information">
+    <icon name="info" width="19" height="19" foreground="info" />
+    <text grow="1" size="sm" foreground="text_muted" wrap="true">The key is stored in macOS Keychain. Audio never leaves this Mac.</text>
+  </row>
 </column>

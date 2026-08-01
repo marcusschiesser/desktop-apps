@@ -12,8 +12,8 @@ pub const canvas_label = "meeting-notes-canvas";
 pub const window_label = "main";
 pub const settings_window_label = "settings";
 pub const settings_canvas_label = "meeting-notes-settings-canvas";
-const window_width: f32 = 680;
-const window_height: f32 = 760;
+const window_width: f32 = 640;
+const window_height: f32 = 500;
 
 const command_open = "app.open";
 const command_settings = "app.settings";
@@ -71,9 +71,9 @@ const shell_windows = [_]native_sdk.ShellWindow{.{
     .title = "Local Meeting Notes",
     .width = window_width,
     .height = window_height,
-    .min_width = 620,
-    .min_height = 620,
-    .restore_state = true,
+    .min_width = 580,
+    .min_height = 460,
+    .restore_state = false,
     .close_policy = .hide,
     .views = &shell_views,
 }};
@@ -239,6 +239,19 @@ pub const Model = struct {
         };
     }
 
+    pub fn recorderTitle(model: *const Model) []const u8 {
+        return switch (model.phase) {
+            .idle, .saved => "Ready to record",
+            .starting => "Starting capture",
+            .recording => "Recording in progress",
+            .stopping => "Finishing recording",
+            .transcribing => "Creating transcript",
+            .summarizing => "Creating meeting note",
+            .saving => "Saving meeting note",
+            .failed => "Recording needs attention",
+        };
+    }
+
     pub fn detail(model: *const Model) []const u8 {
         return model.status_detail.text();
     }
@@ -352,10 +365,10 @@ pub fn windows(model: *const Model, scratch: *MeetingApp.WindowsScratch) []const
         .canvas_label = settings_canvas_label,
         .title = "Settings",
         .width = 520,
-        .height = 430,
+        .height = 400,
         .resizable = false,
         .min_width = 520,
-        .min_height = 430,
+        .min_height = 400,
         .on_close = .settings_closed,
     };
     return scratch.windows[0..1];
@@ -847,7 +860,7 @@ pub fn main(init: std.process.Init) !void {
         .bundle_id = "com.local.meetingnotes",
         .icon_path = "assets/icon.png",
         .default_frame = geometry.RectF.init(0, 0, window_width, window_height),
-        .restore_state = true,
+        .restore_state = false,
         .js_window_api = false,
         .security = .{
             .permissions = &app_permissions,
