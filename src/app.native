@@ -1,0 +1,141 @@
+<column padding="12" gap="12" background="background">
+  <if test="{isCheckingSetup}">
+    <column grow="1" cross="center" main="center" gap="14">
+      <badge variant="secondary">Local Meeting Notes</badge>
+      <text><span weight="bold" scale="1.45">Getting things ready…</span></text>
+      <text size="sm" foreground="text_muted">Checking your secure macOS Keychain</text>
+    </column>
+  </if>
+  <else>
+    <if test="{showOnboarding}">
+      <scroll grow="1" label="Local Meeting Notes onboarding">
+        <column gap="16">
+          <row height="64" padding="14" gap="10" cross="center" background="surface" radius="lg" window-drag="true" label="Welcome header">
+            <column gap="2">
+              <text><span weight="bold" scale="1.3">Welcome to Local Meeting Notes</span></text>
+              <text size="sm" foreground="text_muted">A private meeting memory for your Mac</text>
+            </column>
+            <spacer grow="1" />
+            <badge variant="secondary">First-time setup</badge>
+          </row>
+
+          <panel padding="20" background="surface" radius="lg" border-color="border" label="What Local Meeting Notes does">
+            <column gap="8">
+              <text><span weight="bold" scale="1.35">Stay present. Leave with the notes.</span></text>
+              <text foreground="text_muted" wrap="true">Start a recording from the menu bar, have the conversation, and get a structured Markdown note with a five-point summary, decisions, action items, and the full transcript.</text>
+            </column>
+          </panel>
+
+          <row gap="10">
+            <panel grow="1" padding="14" background="surface" radius="lg" border-color="border" label="Capture step">
+              <column gap="6">
+                <badge variant="secondary">1</badge>
+                <text><span weight="bold">Capture</span></text>
+                <text size="sm" foreground="text_muted" wrap="true">System audio and your microphone.</text>
+              </column>
+            </panel>
+            <panel grow="1" padding="14" background="surface" radius="lg" border-color="border" label="Transcribe step">
+              <column gap="6">
+                <badge variant="secondary">2</badge>
+                <text><span weight="bold">Transcribe</span></text>
+                <text size="sm" foreground="text_muted" wrap="true">Privately on this Mac.</text>
+              </column>
+            </panel>
+            <panel grow="1" padding="14" background="surface" radius="lg" border-color="border" label="Summarize step">
+              <column gap="6">
+                <badge variant="secondary">3</badge>
+                <text><span weight="bold">Summarize</span></text>
+                <text size="sm" foreground="text_muted" wrap="true">With OpenAI GPT-5.6 Luna.</text>
+              </column>
+            </panel>
+          </row>
+
+          <panel padding="18" background="surface" radius="lg" border-color="border" label="Connect OpenAI">
+            <column gap="10">
+              <text><span weight="bold" scale="1.15">Connect OpenAI to continue</span></text>
+              <text size="sm" foreground="text_muted" wrap="true">Your key is stored in macOS Keychain. Audio stays on this Mac; only the transcript is sent to OpenAI for the summary.</text>
+              <text-field text="{apiKeyDraft}" placeholder="sk-..." on-input="api_key_changed" on-submit="save_api_key" label="OpenAI API key" />
+              <row gap="8">
+                <button grow="1" variant="primary" on-press="save_api_key" label="Save API key and finish setup">Save and Continue</button>
+                <button variant="outline" on-press="open_api_keys" label="Open the OpenAI API keys page">Get an API Key</button>
+              </row>
+              <text size="sm" foreground="text_muted" wrap="true">{detail}</text>
+            </column>
+          </panel>
+
+          <alert text="No app account, telemetry, cloud storage, or sync is added. Notes and recordings are saved in ~/MeetingNotes." />
+        </column>
+      </scroll>
+    </if>
+    <else>
+      <row height="56" padding="14" gap="10" cross="center" background="surface" radius="lg" window-drag="true" label="Local Meeting Notes header">
+        <column gap="2">
+          <text label="Local Meeting Notes"><span weight="bold" scale="1.25">Local Meeting Notes</span></text>
+          <text size="sm" foreground="text_muted">Private meeting capture for this Mac</text>
+        </column>
+        <spacer grow="1" />
+        <badge variant="secondary">{statusTitle}</badge>
+      </row>
+
+      <scroll grow="1" label="Meeting recorder">
+        <column gap="16">
+          <panel padding="20" background="surface" radius="lg" border-color="border" label="Recording controls">
+            <column gap="14">
+              <row gap="12" cross="center">
+                <column grow="1" gap="4">
+                  <text><span weight="bold" scale="1.25">{statusTitle}</span></text>
+                  <text foreground="text_muted" wrap="true">{detail}</text>
+                </column>
+                <if test="{isRecording}">
+                  <badge variant="destructive">REC {elapsed}</badge>
+                </if>
+              </row>
+
+              <if test="{canStop}">
+                <button variant="destructive" on-press="toggle_recording" label="Stop recording">Stop Recording</button>
+              </if>
+              <else>
+                <button variant="primary" on-press="toggle_recording" disabled="{isBusy}" label="Start recording">Start Recording</button>
+              </else>
+
+              <text size="sm" foreground="text_muted" wrap="true">Captures system audio and microphone, prepares the transcript on this Mac, then asks Luna to create the meeting note.</text>
+
+              <if test="{hasFailure}">
+                <alert text="The current operation did not finish. The retained audio is kept whenever capture completed." />
+                <if test="{canRetry}">
+                  <button variant="secondary" on-press="retry_processing" label="Retry transcription and note generation">Retry Processing</button>
+                </if>
+              </if>
+            </column>
+          </panel>
+
+          <if test="{hasLatest}">
+            <panel padding="16" background="surface" radius="lg" border-color="border" label="Latest meeting note">
+              <row gap="10" cross="center">
+                <column grow="1" gap="3">
+                  <text><span weight="bold">Latest meeting note</span></text>
+                  <text size="sm" foreground="text_muted" wrap="true">{latestNote}</text>
+                </column>
+                <button variant="outline" on-press="open_latest_note" label="Open latest note">Open Note</button>
+              </row>
+            </panel>
+          </if>
+
+          <panel padding="16" background="surface" radius="lg" border-color="border" label="Output folder">
+            <row gap="10" cross="center">
+              <column grow="1" gap="3">
+                <text><span weight="bold">Meeting archive</span></text>
+                <text size="sm" foreground="text_muted" wrap="true">{notesDirectory}</text>
+              </column>
+              <button variant="outline" on-press="open_notes_folder" label="Open notes folder">Open Folder</button>
+            </row>
+          </panel>
+
+          <alert text="Recordings, transcripts, and Markdown stay in ~/MeetingNotes. Only the transcript is sent to OpenAI for summarization." />
+        </column>
+      </scroll>
+
+      <status-bar>{detail}</status-bar>
+    </else>
+  </else>
+</column>

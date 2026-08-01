@@ -1,0 +1,48 @@
+.{
+    .id = "com.local.meetingnotes",
+    .name = "meeting-notes",
+    .display_name = "Local Meeting Notes",
+    .description = "Private, local-first meeting capture, transcription, and notes.",
+    .version = "0.4.0",
+    .icons = .{"assets/icon.png"},
+    .platforms = .{"macos"},
+    .permissions = .{ "view", "command", "filesystem", "network", "microphone", "credentials" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "tray" },
+    .webview_layer = "exclude",
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Local Meeting Notes",
+                .width = 680,
+                .height = 760,
+                .min_width = 620,
+                .min_height = 620,
+                .restore_state = true,
+                .restore_policy = "center_on_primary",
+                .close_policy = "hide",
+                .views = .{
+                    .{
+                        .label = "meeting-notes-canvas",
+                        .kind = "gpu_surface",
+                        .fill = true,
+                        .role = "Meeting notes app",
+                        .accessibility_label = "Local Meeting Notes",
+                        .gpu_backend = "metal",
+                        .gpu_pixel_format = "bgra8_unorm",
+                        .gpu_present_mode = "timer",
+                        .gpu_alpha_mode = "opaque",
+                        .gpu_color_space = "srgb",
+                        .gpu_vsync = true,
+                    },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{},
+            .external_links = .{ .action = "deny" },
+        },
+    },
+}
