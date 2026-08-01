@@ -1,0 +1,17 @@
+.{
+    .name = .meeting_notes,
+    .fingerprint = 0x692ae48c5a707070,
+    .version = "0.4.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .native_sdk = .{ .path = "node_modules/@native-sdk/cli" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "app.zon",
+        "assets",
+        "native",
+        "src",
+    },
+}

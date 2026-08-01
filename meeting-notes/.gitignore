@@ -1,0 +1,11 @@
+node_modules/
+.native/
+.zig-cache/
+zig-out/
+release/
+assets/bin/
+assets/models/*.bin
+assets/icon-generated.png
+*.dSYM/
+.DS_Store
+*-screenshot.png

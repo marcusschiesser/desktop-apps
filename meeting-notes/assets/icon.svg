@@ -1,0 +1,10 @@
+<svg viewBox="0 0 1024 1024">
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="#171717"/>
+  <rect x="248" y="196" width="528" height="632" rx="72" fill="#fafafa"/>
+  <rect x="344" y="338" width="336" height="36" rx="18" fill="#202020"/>
+  <rect x="344" y="452" width="256" height="36" rx="18" fill="#202020"/>
+  <rect x="344" y="566" width="296" height="36" rx="18" fill="#202020"/>
+  <circle cx="320" cy="356" r="20" fill="#f04438"/>
+  <circle cx="320" cy="470" r="20" fill="#f04438"/>
+  <circle cx="320" cy="584" r="20" fill="#f04438"/>
+</svg>
