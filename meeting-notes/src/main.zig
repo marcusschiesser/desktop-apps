@@ -25,9 +25,7 @@ const command_quit = "app.quit";
 
 const key_capture: u64 = 10;
 const key_whisper: u64 = 12;
-const key_transcript_read: u64 = 13;
 const key_summarize: u64 = 14;
-const key_transcript_assembly: u64 = 15;
 const key_open: u64 = 16;
 const key_open_api_keys: u64 = 17;
 const key_recording_timer: u64 = 100;
@@ -144,9 +142,7 @@ pub const Msg = union(enum) {
     capture_read: native_sdk.EffectAudioCaptureRead,
     capture_access: native_sdk.EffectAudioCaptureAccess,
     whisper_exited: native_sdk.EffectExit,
-    transcript_for_summary: native_sdk.EffectFileResult,
     summary_response: native_sdk.EffectResponse,
-    transcript_for_assembly: native_sdk.EffectFileResult,
     recording_tick: native_sdk.EffectTimer,
 
     pub const view_unbound = .{
@@ -159,9 +155,7 @@ pub const Msg = union(enum) {
         "capture_read",
         "capture_access",
         "whisper_exited",
-        "transcript_for_summary",
         "summary_response",
-        "transcript_for_assembly",
         "recording_tick",
     };
 };
@@ -608,21 +602,40 @@ fn startSummary(model: *Model, fx: *Effects) void {
     model.summary_transcript_len = 0;
     model.summary_chunks = 0;
     model.status_detail.set("Reading the local transcript for summarization.");
-    fx.readFile(.{
-        .key = key_transcript_read,
-        .path = model.transcript_path.text(),
-        .on_result = Effects.fileMsg(.transcript_for_summary),
-    });
+    model.summary_transcript_len = notes.transcriptSize(model.io, model.transcript_path.text()) catch |err| {
+        setSummaryFailure(model, if (err == error.FileNotFound)
+            "Whisper did not produce the expected transcript file."
+        else
+            "The transcript could not be opened for summarization.");
+        startAssemble(model, fx);
+        return;
+    };
+    if (model.summary_transcript_len == 0) {
+        setSummaryFailure(model, "Whisper produced an empty transcript.");
+        startAssemble(model, fx);
+        return;
+    }
+    fetchNextSummaryChunk(model, fx);
 }
 
 fn startAssemble(model: *Model, fx: *Effects) void {
     model.phase = .saving;
     model.status_detail.set("Writing Markdown and cleaning temporary transcription files.");
-    fx.readFile(.{
-        .key = key_transcript_assembly,
-        .path = model.transcript_path.text(),
-        .on_result = Effects.fileMsg(.transcript_for_assembly),
-    });
+    notes.assemble(
+        model.io,
+        std.heap.page_allocator,
+        model.note_path.text(),
+        model.transcript_path.text(),
+        model.whisper_audio_path.text(),
+        if (model.summary_failed) null else model.summary_draft.text(),
+        model.summary_error.text(),
+        !model.replaying,
+    ) catch |err| {
+        failWithError(model, "Could not assemble the Markdown note.", err);
+        if (model.quit_after_save) fx.quitApp();
+        return;
+    };
+    markSaved(model, fx);
 }
 
 fn setSummaryFailure(model: *Model, detail: []const u8) void {
@@ -630,16 +643,41 @@ fn setSummaryFailure(model: *Model, detail: []const u8) void {
     model.summary_error.set(detail);
 }
 
-fn fetchSummary(model: *Model, transcript: []const u8, fx: *Effects) void {
-    if (model.summary_offset > transcript.len) {
+fn fetchNextSummaryChunk(model: *Model, fx: *Effects) void {
+    if (model.summary_offset > model.summary_transcript_len) {
         setSummaryFailure(model, "The transcript changed while it was being summarized.");
         startAssemble(model, fx);
         return;
     }
+    if (model.summary_offset == model.summary_transcript_len) {
+        startAssemble(model, fx);
+        return;
+    }
+
+    // The lookahead lets buildRequest stop before a UTF-8 code point that
+    // crosses its preferred chunk boundary.
+    var transcript_buffer: [notes.transcript_read_bytes]u8 = undefined;
+    const expected = @min(transcript_buffer.len, model.summary_transcript_len - model.summary_offset);
+    const transcript = notes.readTranscriptChunk(
+        model.io,
+        model.transcript_path.text(),
+        model.summary_offset,
+        transcript_buffer[0..expected],
+    ) catch {
+        setSummaryFailure(model, "The transcript could not be read for summarization.");
+        startAssemble(model, fx);
+        return;
+    };
+    if (transcript.len != expected) {
+        setSummaryFailure(model, "The transcript changed while it was being summarized.");
+        startAssemble(model, fx);
+        return;
+    }
+
     var body_buffer: [native_sdk.max_effect_fetch_payload_bytes]u8 = undefined;
     const request = notes.buildRequest(
         model.summary_draft.text(),
-        transcript[model.summary_offset..],
+        transcript,
         &body_buffer,
     ) catch |err| {
         var detail_buffer: [320]u8 = undefined;
@@ -649,7 +687,6 @@ fn fetchSummary(model: *Model, transcript: []const u8, fx: *Effects) void {
         return;
     };
     model.summary_offset += request.transcript_bytes;
-    model.summary_transcript_len = transcript.len;
     model.summary_chunks += 1;
 
     var authorization_buffer: ["Bearer ".len + max_api_key]u8 = undefined;
@@ -874,18 +911,6 @@ pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
                 if (model.quit_after_save) fx.quitApp();
             }
         },
-        .transcript_for_summary => |result| {
-            if (result.outcome == .ok) {
-                fetchSummary(model, result.bytes, fx);
-            } else {
-                setSummaryFailure(model, switch (result.outcome) {
-                    .truncated => "The transcript exceeded the SDK's 1 MiB file-effect limit. The local transcript remains on disk.",
-                    .not_found => "Whisper did not produce the expected transcript file.",
-                    else => "The transcript could not be read for summarization.",
-                });
-                startAssemble(model, fx);
-            }
-        },
         .summary_response => |response| {
             if (response.outcome != .ok or response.status < 200 or response.status >= 300 or response.truncated) {
                 summaryResponseFailure(model, response);
@@ -908,41 +933,10 @@ pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
             model.summary_draft.set(summary);
             if (model.summary_offset < model.summary_transcript_len) {
                 model.status_detail.set("Reading the next local transcript chunk.");
-                fx.readFile(.{
-                    .key = key_transcript_read,
-                    .path = model.transcript_path.text(),
-                    .on_result = Effects.fileMsg(.transcript_for_summary),
-                });
+                fetchNextSummaryChunk(model, fx);
             } else {
                 startAssemble(model, fx);
             }
-        },
-        .transcript_for_assembly => |result| {
-            if (result.outcome != .ok) {
-                model.fail(switch (result.outcome) {
-                    .truncated => "The transcript exceeded the SDK's 1 MiB file-effect limit and could not be assembled safely.",
-                    .not_found => "Whisper did not produce the expected transcript file.",
-                    else => "The local transcript could not be read while assembling the meeting note.",
-                });
-                if (model.quit_after_save) fx.quitApp();
-                return;
-            }
-            notes.assemble(
-                model.io,
-                std.heap.page_allocator,
-                model.note_path.text(),
-                model.transcript_path.text(),
-                result.bytes,
-                model.whisper_audio_path.text(),
-                if (model.summary_failed) null else model.summary_draft.text(),
-                model.summary_error.text(),
-                !model.replaying,
-            ) catch |err| {
-                failWithError(model, "Could not assemble the Markdown note.", err);
-                if (model.quit_after_save) fx.quitApp();
-                return;
-            };
-            markSaved(model, fx);
         },
         .recording_tick => |timer| {
             if (timer.outcome == .fired and model.phase == .recording) {
