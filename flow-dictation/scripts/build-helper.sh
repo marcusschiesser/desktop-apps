@@ -19,11 +19,27 @@ if [ "$(uname -s)" = "Darwin" ]; then
     -framework AppKit \
     -framework AVFoundation \
     -framework ApplicationServices \
-    "$project_dir/native/FlowHelper.swift" \
+    "$project_dir/native/FlowShared.swift" \
+    "$project_dir/native/FlowMac.swift" \
+    "$project_dir/native/FlowMain.swift" \
     -o "$output"
-  codesign --force --sign - --identifier com.marcusschiesser.flowdictation.helper --requirements '=designated => identifier "com.marcusschiesser.flowdictation.helper"' "$output" >/dev/null
+
+  codesign \
+    --force \
+    --sign - \
+    --identifier com.marcusschiesser.flowdictation.helper \
+    --requirements '=designated => identifier "com.marcusschiesser.flowdictation.helper"' \
+    "$output" >/dev/null
 else
-  swiftc -parse-as-library -swift-version 5 -O -module-cache-path "$module_cache" "$project_dir/native/FlowHelper.swift" -o "$output"
+  swiftc \
+    -parse-as-library \
+    -swift-version 5 \
+    -O \
+    -module-cache-path "$module_cache" \
+    "$project_dir/native/FlowShared.swift" \
+    "$project_dir/native/FlowMac.swift" \
+    "$project_dir/native/FlowMain.swift" \
+    -o "$output"
 fi
 
 echo "built $output"
