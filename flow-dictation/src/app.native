@@ -1,0 +1,53 @@
+<column background="background">
+  <row height="52" padding="12" cross="center" background="surface" window-drag="true" label="Flow Dictation header">
+    <text><span weight="bold" scale="1.2">Flow Dictation</span></text>
+    <spacer grow="1" />
+    <if test="{helperRunning}">
+      <badge variant="secondary">HELPER RUNNING</badge>
+    </if>
+    <else>
+      <badge variant="destructive">HELPER STOPPED</badge>
+    </else>
+  </row>
+  <separator />
+  <scroll grow="1" label="Flow Dictation settings">
+    <column padding="24" gap="16">
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Current status">
+        <column gap="8">
+          <text size="sm" foreground="text_muted">CURRENT STATUS</text>
+          <text label="{status}"><span weight="bold">{status}</span></text>
+          <text size="sm" foreground="text_muted">Default hold-to-talk shortcut: Command + Shift + Space</text>
+        </column>
+      </panel>
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="How dictation works">
+        <column gap="10">
+          <text><span weight="bold" scale="1.1">Hold, speak, release</span></text>
+          <row gap="12" cross="start"><badge variant="secondary">1</badge><column grow="1" gap="3"><text><span weight="bold">Hold the shortcut</span></text><text size="sm" foreground="text_muted" wrap="true">A small floating pill confirms that the microphone is recording.</text></column></row>
+          <row gap="12" cross="start"><badge variant="secondary">2</badge><column grow="1" gap="3"><text><span weight="bold">Release to transcribe</span></text><text size="sm" foreground="text_muted" wrap="true">Uses whisper.cpp locally when configured, otherwise the OpenAI transcription API.</text></column></row>
+          <row gap="12" cross="start"><badge variant="secondary">3</badge><column grow="1" gap="3"><text><span weight="bold">Paste at the cursor</span></text><text size="sm" foreground="text_muted" wrap="true">The cleaned transcript is pasted into the focused app and the clipboard is restored.</text></column></row>
+        </column>
+      </panel>
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Required permissions">
+        <column gap="8">
+          <text><span weight="bold" scale="1.1">macOS permissions</span></text>
+          <row gap="8" cross="center"><icon name="check" width="16" height="16" foreground="success" /><text>Microphone — records your voice</text></row>
+          <row gap="8" cross="center"><icon name="check" width="16" height="16" foreground="success" /><text>Accessibility — observes the global shortcut and pastes text</text></row>
+          <text size="sm" foreground="text_muted" wrap="true">macOS prompts on first use. You can review permissions in System Settings → Privacy &amp; Security.</text>
+        </column>
+      </panel>
+      <row gap="10">
+        <button variant="primary" on-press="restart" label="Restart background helper">Restart helper</button>
+        <button variant="outline" on-press="open_config" label="Open config file">Open config.json</button>
+        <button variant="secondary" on-press="run_diagnostics" label="Run diagnostics">Run diagnostics</button>
+      </row>
+      <panel padding="14" background="surface" radius="lg" border-color="border" label="Diagnostics and configuration">
+        <column gap="8">
+          <text size="sm" foreground="text_muted">CONFIG</text><text size="sm" wrap="true">{configAction}</text><separator />
+          <text size="sm" foreground="text_muted">DIAGNOSTICS</text><text size="sm" wrap="true">{diagnostic}</text><separator />
+          <text size="sm" foreground="text_muted">Helper restarts this session: {restarts}</text>
+        </column>
+      </panel>
+      <text size="sm" foreground="text_muted" wrap="true">Private by default. No accounts, no analytics, and local Whisper works without a network connection.</text>
+    </column>
+  </scroll>
+</column>

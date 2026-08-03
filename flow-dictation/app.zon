@@ -1,0 +1,47 @@
+.{
+    .id = "com.marcusschiesser.flowdictation",
+    .name = "flow-dictation",
+    .display_name = "Flow Dictation",
+    .description = "Private system-wide dictation with local Whisper support.",
+    .version = "0.1.0",
+    .platforms = .{"macos"},
+    .permissions = .{ "view", "command", "filesystem", "microphone", "clipboard" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "tray" },
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Flow Dictation",
+                .width = 680,
+                .height = 620,
+                .min_width = 620,
+                .min_height = 560,
+                .restore_state = false,
+                .restore_policy = "center_on_primary",
+                .close_policy = "hide",
+                .views = .{
+                    .{
+                        .label = "flow-dictation-canvas",
+                        .kind = "gpu_surface",
+                        .fill = true,
+                        .role = "Flow Dictation settings",
+                        .accessibility_label = "Flow Dictation",
+                        .gpu_backend = "metal",
+                        .gpu_pixel_format = "bgra8_unorm",
+                        .gpu_present_mode = "timer",
+                        .gpu_alpha_mode = "opaque",
+                        .gpu_color_space = "srgb",
+                        .gpu_vsync = true,
+                    },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{},
+            .external_links = .{ .action = "deny" },
+        },
+    },
+    .webview_layer = "exclude",
+}

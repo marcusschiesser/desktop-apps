@@ -1,0 +1,17 @@
+{
+  "name": "flow-dictation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private, local-first macOS dictation app built with Vercel Native SDK.",
+  "scripts": {
+    "helper": "sh scripts/build-helper.sh",
+    "check": "npm run helper && native check .",
+    "test:helper": "npm run helper && assets/bin/flow-helper self-test",
+    "test": "npm run test:helper && native check .",
+    "dev": "npm run helper && native dev . --yes",
+    "build": "npm run helper && native build . --yes"
+  },
+  "devDependencies": {
+    "@native-sdk/cli": "0.7.2"
+  }
+}

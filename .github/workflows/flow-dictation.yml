@@ -1,0 +1,26 @@
+name: Flow Dictation
+
+on:
+  push:
+    paths:
+      - "flow-dictation/**"
+      - ".github/workflows/flow-dictation.yml"
+  pull_request:
+    paths:
+      - "flow-dictation/**"
+      - ".github/workflows/flow-dictation.yml"
+
+jobs:
+  macos:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: flow-dictation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: node tests/repository.test.mjs
+      - run: npm test
