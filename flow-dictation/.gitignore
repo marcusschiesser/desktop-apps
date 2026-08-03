@@ -1,0 +1,5 @@
+node_modules/
+.native/
+assets/bin/
+zig-out/
+.DS_Store

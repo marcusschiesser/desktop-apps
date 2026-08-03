@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "hotkeyKeyCode": 49,
+  "hotkeyModifiers": ["command", "shift"],
+  "transcriptionProvider": "local",
+  "whisperCliPath": "/opt/homebrew/bin/whisper-cli",
+  "whisperModelPath": "/Users/marcus/Library/Application Support/Flow Dictation/models/ggml-small.en.bin",
+  "openAIBaseURL": "https://api.openai.com/v1",
+  "transcriptionModel": "whisper-1",
+  "cleanupEnabled": true,
+  "cleanupModel": "gpt-4.1-mini",
+  "language": "en",
+  "restoreClipboardDelayMs": 300
+}
