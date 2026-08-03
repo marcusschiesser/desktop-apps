@@ -14,7 +14,7 @@ func openConfig(paths: FlowPaths) throws {
 
 @main
 struct FlowHelperMain {
-    static func main() {
+    @MainActor static func main() {
         do {
             let command = CommandLine.arguments.dropFirst().first ?? "serve"
             let paths = FlowPaths.current()
