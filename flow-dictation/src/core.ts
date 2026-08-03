@@ -71,7 +71,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
     case "helper_exit":
       return {
         ...model,
-        status: asciiBytes(`Background helper stopped (exit ${msg.code})`),
+        status: asciiBytes("Background helper stopped"),
         helperRunning: false,
         restartPending: false,
       };
@@ -156,7 +156,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
         configAction:
           msg.code === 0
             ? asciiBytes("Opened config.json in the default editor")
-            : asciiBytes(`Could not open config.json (exit ${msg.code})`),
+            : asciiBytes("Could not open config.json"),
       };
     case "config_error":
       return { ...model, configAction: msg.error };
@@ -181,7 +181,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
         diagnostic:
           msg.code === 0
             ? asciiBytes("All helper self-tests passed")
-            : asciiBytes(`Helper self-test failed (exit ${msg.code})`),
+            : asciiBytes("Helper self-test failed"),
       };
     case "diagnostic_error":
       return { ...model, diagnostic: msg.error };
