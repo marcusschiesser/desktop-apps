@@ -57,7 +57,9 @@ npm run build
 
 - `src/core.ts` — deterministic Native SDK TypeScript model/update loop
 - `src/app.native` — native settings and status interface
-- `native/FlowHelper.swift` — global hotkey, microphone recording, transcription, floating pill, menu bar, clipboard, and paste integration
+- `native/FlowShared.swift` — configuration, local cleanup, multipart construction, and self-tests
+- `native/FlowMac.swift` — global hotkey, microphone recording, transcription, floating pill, menu bar, clipboard, and paste integration
+- `native/FlowMain.swift` — helper command entry point
 - `scripts/build-helper.sh` — Swift compilation and ad-hoc code signing
 - `PROMPT.md` — the Codex-optimized build specification
 
