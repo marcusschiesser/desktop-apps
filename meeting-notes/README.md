@@ -7,13 +7,15 @@ browser engine, account system, telemetry, sync, or app-managed cloud storage.
 
 The app:
 
-1. Captures system audio and microphone audio with Apple ScreenCaptureKit.
-2. Mixes and converts both tracks with AVFoundation; no external audio tool is
-   needed.
+1. Receives aligned system-audio and microphone PCM streams through the
+   reliable capture API in [Vercel Native SDK PR #264](https://github.com/vercel-labs/native/pull/264).
+2. Uses Zig to mix each paired chunk, write the retained 48 kHz stereo PCM WAV,
+   and simultaneously downsample a 16 kHz mono copy for Whisper. Both files are
+   published atomically.
 3. Transcribes locally using a bundled `whisper.cpp` executable and the
    multilingual medium model.
-4. Sends only the transcript to OpenAI GPT-5.6 Luna to produce exactly five
-   summary bullets, decisions, and owner-attributed action items.
+4. Uses Zig to send only the transcript to OpenAI GPT-5.6 Luna, parse the
+   response, and assemble the final Markdown note.
 5. Saves the Markdown note and retained `.wav` audio in `~/MeetingNotes`.
 
 ## Output
@@ -61,7 +63,9 @@ of overwriting an existing pair.
   xcode-select --install
   ```
 
-- Node.js 22 or newer and npm, used to run the pinned Native SDK CLI.
+- Zig 0.16.0. The project fetches and builds the Native SDK CLI from the same
+  immutable PR commit used by the app build.
+- Node.js 22 or newer and npm, used to run the project scripts.
 - CMake and Git, used only while building the bundled `whisper.cpp` binary.
 - An OpenAI API key with access to `gpt-5.6-luna`.
 
@@ -71,12 +75,18 @@ available inside the app.
 
 ## Build and package
 
-Install the pinned Vercel Native SDK CLI:
+Install the project dependencies:
 
 ```bash
 cd /path/to/meeting-notes
 npm install
 ```
+
+No published Native SDK CLI is installed. `build.zig.zon` pins PR #264 at
+commit `ca2de190625af6987eb5b2c2ad8b2bcbd43c1a4b`, and
+`scripts/native-pr.sh` fetches that archive and builds its CLI into `.native/`
+on first use. The first check therefore needs internet access; later builds use
+the local Zig caches.
 
 Prepare the bundled transcription assets:
 
@@ -115,13 +125,13 @@ npm run package:mac
 release/Local Meeting Notes.app
 ```
 
-The package contains the native app, Swift capture helper, `whisper-cli`,
-medium model, and generated application icon. The packaging script adds the
-privacy usage descriptions and applies a local signature with a stable
-designated requirement. Move the app to `/Applications` before granting
-permissions so macOS associates the grants with a stable path. The bundled
-capture helper lives at `Contents/Helpers/meeting-notes-helper`, the standard
-macOS location for an app-owned helper executable.
+The package contains the native app, `whisper-cli`, the medium model, and the
+generated application icon. Audio processing, OpenAI request handling, and
+Markdown assembly are all part of the Zig app executable. Native SDK generates
+the privacy usage descriptions from `app.zon`; the packaging script applies a
+local signature with a stable designated requirement. Move the app to
+`/Applications` before granting permissions so macOS associates the grants
+with a stable path.
 
 If a code-signing identity is installed, use it for the package instead:
 
@@ -166,15 +176,22 @@ and asks for the OpenAI key needed to finish setup:
 After onboarding, API-key management moves out of the recorder. Choose
 **Settings…** from the menu-bar tray to replace or delete the saved key.
 
-The key is sent to the bundled native helper over standard input, stored as a
-generic password in macOS Keychain, and cleared from the UI after saving. It is
-never written to a settings file. Avoid entering it while screen sharing.
+The key is stored as a generic password in macOS Keychain and copied into an
+Authorization header only for the OpenAI request. It is cleared from the UI
+after saving and never written to a settings file. Avoid entering it while
+screen sharing.
 
 The app uses the OpenAI Responses API with model `gpt-5.6-luna`, low reasoning
-effort, and `store: false`. It uses an ephemeral URL session with client-side
-caching and cookies disabled, and sends the complete transcript to OpenAI.
-Audio remains local, and the app has no cloud database or sync service; your
-OpenAI account's data controls and retention policy still apply.
+effort, `store: false`, and a `Cache-Control: no-store` request header. It sends
+the complete transcript to OpenAI. Audio remains local, and the app has no
+cloud database or sync service; your OpenAI account's data controls and
+retention policy still apply.
+
+Native SDK bounds each HTTP request body at 64 KiB. The app keeps every request
+inside that limit by sending the transcript in UTF-8-safe chunks. The first
+response initializes the meeting-note draft; each later response incorporates
+the next chunk while preserving supported details. No transcript bytes are
+silently truncated.
 
 If summary generation fails, the app still saves the audio and a Markdown note
 containing the full local transcript plus a clear failure summary.
@@ -190,15 +207,36 @@ containing the full local transcript plus a clear failure summary.
 - Choosing Quit during recording requests a graceful stop and waits for the
   current note to be saved.
 
-Do not force-quit while recording. The app uses a stop sentinel so
-ScreenCaptureKit and AVFoundation can finalize the audio before capture exits.
+Do not force-quit while recording. A graceful stop lets the reliable Native SDK
+buffer drain and the temporary WAV publish atomically before transcription
+starts.
+
+## Audio stream behavior
+
+Native SDK delivers 20–100 ms blocks containing separate, timestamp-aligned
+signed 16-bit little-endian system and microphone PCM. The app writes each
+borrowed block during the update callback, mixes both sources at equal gain
+with clipping headroom, stores 48 kHz stereo audio, and creates the 16 kHz mono
+Whisper input in the same pass using a bounded three-frame averaging filter.
+Gaps inserted by the SDK remain real timeline silence; naturally silent
+samples are not counted as gaps.
+
+The reliable ring holds five seconds. Accepted frames are never overwritten.
+If the app cannot consume them before the buffer fills, Native SDK stops with
+`consumer_too_slow`; the app drains and preserves the usable partial WAV, then
+offers Retry for transcription. A normal Stop also drains every accepted frame
+before finalizing the file.
+
+Native SDK session replay consumes the recorded PCM and note events without
+publishing WAV or Markdown files. Live runs retain the atomic file behavior
+described above.
 
 ## Privacy and offline behavior
 
 | Data | Location or destination |
 | --- | --- |
 | Retained audio and Markdown | `~/MeetingNotes` |
-| Temporary tracks, Whisper WAV, transcript, summary | `~/MeetingNotes`; removed after successful assembly |
+| Temporary WAV, Whisper WAV, transcript | `~/MeetingNotes`; the WAV is atomically published and the other temporary files are removed after successful assembly |
 | OpenAI API key | macOS Keychain |
 | Transcript during summarization | OpenAI Responses API |
 

@@ -40,7 +40,6 @@ pub fn build(b: *std.Build) void {
             });
         }
         module.linkFramework("Foundation", .{});
-        module.linkFramework("CoreGraphics", .{});
         module.linkFramework("Security", .{});
     }
 }
