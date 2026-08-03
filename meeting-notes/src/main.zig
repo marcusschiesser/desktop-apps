@@ -1,12 +1,13 @@
 const std = @import("std");
 const runner = @import("runner");
 const native_sdk = @import("native_sdk");
+const audio = @import("audio_writer.zig");
+const notes = @import("notes.zig");
 
 pub const panic = std.debug.FullPanic(native_sdk.debug.capturePanic);
 
 const canvas = native_sdk.canvas;
 const geometry = native_sdk.geometry;
-const app_dirs = native_sdk.app_dirs;
 
 pub const canvas_label = "meeting-notes-canvas";
 pub const window_label = "main";
@@ -23,13 +24,13 @@ const command_open_latest = "notes.open-latest";
 const command_quit = "app.quit";
 
 const key_capture: u64 = 10;
-const key_stop: u64 = 11;
 const key_whisper: u64 = 12;
-const key_summarize: u64 = 13;
-const key_assemble: u64 = 14;
-const key_open: u64 = 15;
-const key_open_api_keys: u64 = 16;
+const key_summarize: u64 = 14;
+const key_open: u64 = 16;
+const key_open_api_keys: u64 = 17;
 const key_recording_timer: u64 = 100;
+const key_microphone_access: u64 = 101;
+const key_system_audio_access: u64 = 102;
 
 const max_path = 2048;
 const max_status = 768;
@@ -39,8 +40,6 @@ extern fn meeting_notes_keychain_get(buffer: [*]u8, capacity: usize, length: *us
 extern fn meeting_notes_keychain_set(secret: [*]const u8, length: usize) c_int;
 extern fn meeting_notes_keychain_delete() c_int;
 extern fn meeting_notes_keychain_last_status() c_int;
-extern fn meeting_notes_screen_capture_preflight() c_int;
-extern fn meeting_notes_screen_capture_request() c_int;
 
 const app_permissions = [_][]const u8{
     native_sdk.security.permission_command,
@@ -48,6 +47,8 @@ const app_permissions = [_][]const u8{
     native_sdk.security.permission_filesystem,
     native_sdk.security.permission_network,
     native_sdk.security.permission_credentials,
+    native_sdk.security.permission_microphone,
+    native_sdk.security.permission_system_audio,
 };
 
 const shell_views = [_]native_sdk.ShellView{
@@ -137,12 +138,11 @@ pub const Msg = union(enum) {
     save_api_key,
     delete_api_key,
     api_key_changed: canvas.TextInputEvent,
-    capture_line: native_sdk.EffectLine,
-    capture_exited: native_sdk.EffectExit,
-    stop_exited: native_sdk.EffectExit,
+    capture: native_sdk.EffectAudioCapture,
+    capture_read: native_sdk.EffectAudioCaptureRead,
+    capture_access: native_sdk.EffectAudioCaptureAccess,
     whisper_exited: native_sdk.EffectExit,
-    summarize_exited: native_sdk.EffectExit,
-    assemble_exited: native_sdk.EffectExit,
+    summary_response: native_sdk.EffectResponse,
     recording_tick: native_sdk.EffectTimer,
 
     pub const view_unbound = .{
@@ -151,17 +151,19 @@ pub const Msg = union(enum) {
         "close_settings",
         "settings_closed",
         "quit",
-        "capture_line",
-        "capture_exited",
-        "stop_exited",
+        "capture",
+        "capture_read",
+        "capture_access",
         "whisper_exited",
-        "summarize_exited",
-        "assemble_exited",
+        "summary_response",
         "recording_tick",
     };
 };
 
 pub const Model = struct {
+    io: std.Io = undefined,
+    audio_writer: audio.Writer = undefined,
+    replaying: bool = false,
     phase: Phase = .idle,
     api_key_present: bool = false,
     keychain_checked: bool = false,
@@ -169,23 +171,30 @@ pub const Model = struct {
     quit_after_save: bool = false,
     summary_failed: bool = false,
     capture_completed: bool = false,
+    capture_requested: bool = false,
+    capture_read_pending: bool = false,
+    capture_terminal_seen: bool = false,
+    capture_terminal_failed: bool = false,
+    cancel_start: bool = false,
     elapsed_seconds: u64 = 0,
+    system_gap_frames: u64 = 0,
+    microphone_gap_frames: u64 = 0,
+    summary_offset: usize = 0,
+    summary_transcript_len: usize = 0,
+    summary_chunks: u32 = 0,
 
     status_detail: FixedText(max_status) = .{},
     capture_error: FixedText(max_status) = .{},
     summary_error: FixedText(320) = .{},
     notes_dir: FixedText(max_path) = .{},
-    settings_dir: FixedText(max_path) = .{},
-    helper_path: FixedText(max_path) = .{},
     whisper_cli_path: FixedText(max_path) = .{},
     whisper_model_path: FixedText(max_path) = .{},
-    stop_path: FixedText(max_path) = .{},
     note_path: FixedText(max_path) = .{},
     audio_path: FixedText(max_path) = .{},
     whisper_audio_path: FixedText(max_path) = .{},
     transcript_root: FixedText(max_path) = .{},
     transcript_path: FixedText(max_path) = .{},
-    summary_path: FixedText(max_path) = .{},
+    summary_draft: FixedText(notes.max_draft_bytes) = .{},
     latest_note_path: FixedText(max_path) = .{},
     latest_audio_path: FixedText(max_path) = .{},
 
@@ -196,29 +205,39 @@ pub const Model = struct {
     // the recording/effect state machine.
     pub const view_unbound = .{
         "phase",
+        "io",
+        "audio_writer",
+        "replaying",
         "api_key_present",
         "keychain_checked",
         "settings_open",
         "quit_after_save",
         "summary_failed",
         "capture_completed",
+        "capture_requested",
+        "capture_read_pending",
+        "capture_terminal_seen",
+        "capture_terminal_failed",
+        "cancel_start",
         "elapsed_seconds",
+        "system_gap_frames",
+        "microphone_gap_frames",
+        "summary_offset",
+        "summary_transcript_len",
+        "summary_chunks",
         "canStart",
         "status_detail",
         "capture_error",
         "summary_error",
         "notes_dir",
-        "settings_dir",
-        "helper_path",
         "whisper_cli_path",
         "whisper_model_path",
-        "stop_path",
         "note_path",
         "audio_path",
         "whisper_audio_path",
         "transcript_root",
         "transcript_path",
-        "summary_path",
+        "summary_draft",
         "latest_note_path",
         "latest_audio_path",
         "api_key",
@@ -333,18 +352,28 @@ pub const Model = struct {
     }
 
     fn clearCurrentMeeting(model: *Model) void {
-        model.stop_path.clear();
+        model.audio_writer.discard();
         model.note_path.clear();
         model.audio_path.clear();
         model.whisper_audio_path.clear();
         model.transcript_root.clear();
         model.transcript_path.clear();
-        model.summary_path.clear();
+        model.summary_draft.clear();
         model.capture_error.clear();
         model.summary_error.clear();
         model.summary_failed = false;
         model.capture_completed = false;
+        model.capture_requested = false;
+        model.capture_read_pending = false;
+        model.capture_terminal_seen = false;
+        model.capture_terminal_failed = false;
+        model.cancel_start = false;
         model.elapsed_seconds = 0;
+        model.system_gap_frames = 0;
+        model.microphone_gap_frames = 0;
+        model.summary_offset = 0;
+        model.summary_transcript_len = 0;
+        model.summary_chunks = 0;
     }
 
     fn fail(model: *Model, detail_text: []const u8) void {
@@ -419,54 +448,127 @@ fn boot(model: *Model, fx: *Effects) void {
 
 fn startCapture(model: *Model, fx: *Effects) void {
     model.clearCurrentMeeting();
+    model.phase = .starting;
+    model.status_detail.set("Checking microphone access.");
+    fx.audioCaptureAccess(.{
+        .key = key_microphone_access,
+        .source = .microphone,
+        .action = .request,
+        .on_event = Effects.audioCaptureAccessMsg(.capture_access),
+    });
+}
 
-    if (meeting_notes_screen_capture_preflight() != 1 and
-        meeting_notes_screen_capture_request() != 1)
-    {
-        model.fail("Screen & System Audio Recording access was not granted. Enable Local Meeting Notes in System Settings, then quit and reopen the app.");
+fn populateRecordingPaths(model: *Model, base_path: []const u8) bool {
+    var buffer: [max_path]u8 = undefined;
+    const note = std.fmt.bufPrint(&buffer, "{s}.md", .{base_path}) catch return false;
+    model.note_path.set(note);
+    const retained_audio = std.fmt.bufPrint(&buffer, "{s}.wav", .{base_path}) catch return false;
+    model.audio_path.set(retained_audio);
+    const whisper_audio = std.fmt.bufPrint(&buffer, "{s}.whisper.wav", .{base_path}) catch return false;
+    model.whisper_audio_path.set(whisper_audio);
+    const transcript_root = std.fmt.bufPrint(&buffer, "{s}.transcript", .{base_path}) catch return false;
+    model.transcript_root.set(transcript_root);
+    const transcript = std.fmt.bufPrint(&buffer, "{s}.transcript.txt", .{base_path}) catch return false;
+    model.transcript_path.set(transcript);
+    return true;
+}
+
+fn failWithError(model: *Model, fallback: []const u8, err: anyerror) void {
+    var buffer: [max_status]u8 = undefined;
+    const detail = std.fmt.bufPrint(&buffer, "{s} ({s})", .{ fallback, @errorName(err) }) catch fallback;
+    model.fail(detail);
+}
+
+fn beginNativeCapture(model: *Model, fx: *Effects) void {
+    const base_path = model.audio_writer.start(model.notes_dir.text(), fx.wallMs()) catch |err| {
+        failWithError(model, "Could not create the recording WAV files.", err);
+        return;
+    };
+    if (!populateRecordingPaths(model, base_path)) {
+        model.audio_writer.discard();
+        model.fail("The generated recording path is too long.");
         return;
     }
 
-    model.phase = .starting;
-    model.status_detail.set("Starting system-audio and microphone capture.");
-
-    var stop_buffer: [max_path]u8 = undefined;
-    const stop_path = std.fmt.bufPrint(&stop_buffer, "{s}/capture-{d}.stop", .{
-        model.settings_dir.text(),
-        fx.wallMs(),
-    }) catch {
-        model.fail("Could not create the recording control path.");
-        return;
-    };
-    model.stop_path.set(stop_path);
-
-    fx.spawn(.{
+    model.capture_requested = true;
+    model.status_detail.set("Starting the Native SDK audio stream.");
+    fx.startAudioCapture(.{
         .key = key_capture,
-        .argv = &.{
-            model.helper_path.text(),
-            "record",
-            "--notes-dir",
-            model.notes_dir.text(),
-            "--stop-file",
-            model.stop_path.text(),
-        },
-        .max_line_bytes = 16 * 1024,
-        .on_line = Effects.lineMsg(.capture_line),
-        .on_exit = Effects.exitMsg(.capture_exited),
+        .system_audio = true,
+        .microphone = .default,
+        .sample_rate_hz = 48_000,
+        .channel_count = 2,
+        .buffer_duration_ms = 5_000,
+        .on_event = Effects.audioCaptureMsg(.capture),
+    });
+}
+
+fn requestCaptureRead(model: *Model, fx: *Effects) void {
+    if (model.capture_read_pending or !model.capture_requested) return;
+    model.capture_read_pending = true;
+    fx.readAudioCapture(.{
+        .key = key_capture,
+        .max_frames = 4_800,
+        .on_read = Effects.audioCaptureReadMsg(.capture_read),
     });
 }
 
 fn requestStop(model: *Model, fx: *Effects) void {
     if (!(model.phase == .starting or model.phase == .recording)) return;
     model.phase = .stopping;
-    model.status_detail.set("Finishing the system-audio and microphone tracks.");
+    model.status_detail.set("Stopping capture and draining buffered audio.");
     fx.cancelTimer(key_recording_timer);
-    fx.spawn(.{
-        .key = key_stop,
-        .argv = &.{ model.helper_path.text(), "stop", "--file", model.stop_path.text() },
-        .output = .collect,
-        .on_exit = Effects.exitMsg(.stop_exited),
-    });
+    if (model.capture_requested) {
+        fx.stopAudioCapture();
+    } else {
+        model.cancel_start = true;
+    }
+}
+
+fn finishCapture(model: *Model, fx: *Effects) void {
+    model.audio_writer.finish() catch |err| {
+        model.capture_requested = false;
+        model.audio_writer.discard();
+        failWithError(model, "Could not finalize the recording WAV files.", err);
+        if (model.quit_after_save) fx.quitApp();
+        return;
+    };
+    model.capture_requested = false;
+    model.capture_completed = true;
+    if (model.capture_terminal_failed) {
+        model.fail(if (model.capture_error.empty())
+            "Audio capture failed, but a usable partial recording was preserved. Choose Retry to process it."
+        else
+            model.capture_error.text());
+        if (model.quit_after_save) fx.quitApp();
+    } else {
+        startWhisper(model, fx);
+    }
+}
+
+fn captureReasonDetail(reason: native_sdk.EffectAudioCaptureReason) []const u8 {
+    return switch (reason) {
+        .none => "Audio capture stopped unexpectedly.",
+        .invalid_options => "The Native SDK rejected the audio capture options.",
+        .permission_missing => "The app manifest does not grant the required audio permissions.",
+        .permission_required => "Microphone and Screen & System Audio Recording access are required.",
+        .already_recording => "Another audio capture is already active.",
+        .device_not_found => "The selected microphone is no longer available.",
+        .device_disconnected => "The microphone was disconnected during recording.",
+        .capture_failed => "The native audio stream failed during recording.",
+        .no_audio => "The capture stopped without receiving audio.",
+        .consumer_too_slow => "Recording stopped because the app could not drain the reliable audio buffer in time.",
+        .discarded => "The recording was discarded.",
+        .unsupported => "Reliable system-audio capture requires macOS 15 or later.",
+    };
+}
+
+fn failAndDiscardCapture(model: *Model, fx: *Effects, detail: []const u8) void {
+    model.capture_requested = false;
+    model.capture_read_pending = false;
+    model.audio_writer.discard();
+    model.fail(detail);
+    if (model.quit_after_save) fx.quitApp();
 }
 
 fn startWhisper(model: *Model, fx: *Effects) void {
@@ -495,98 +597,144 @@ fn startWhisper(model: *Model, fx: *Effects) void {
 
 fn startSummary(model: *Model, fx: *Effects) void {
     model.phase = .summarizing;
-    model.status_detail.set("Sending the transcript to OpenAI with store disabled.");
-    fx.spawn(.{
-        .key = key_summarize,
-        .argv = &.{
-            model.helper_path.text(),
-            "summarize-openai",
-            "--transcript",
-            model.transcript_path.text(),
-            "--output",
-            model.summary_path.text(),
-        },
-        .stdin = model.api_key.text(),
-        .output = .collect,
-        .on_exit = Effects.exitMsg(.summarize_exited),
-    });
+    model.summary_draft.clear();
+    model.summary_offset = 0;
+    model.summary_transcript_len = 0;
+    model.summary_chunks = 0;
+    model.status_detail.set("Reading the local transcript for summarization.");
+    model.summary_transcript_len = notes.transcriptSize(model.io, model.transcript_path.text()) catch |err| {
+        setSummaryFailure(model, if (err == error.FileNotFound)
+            "Whisper did not produce the expected transcript file."
+        else
+            "The transcript could not be opened for summarization.");
+        startAssemble(model, fx);
+        return;
+    };
+    if (model.summary_transcript_len == 0) {
+        setSummaryFailure(model, "Whisper produced an empty transcript.");
+        startAssemble(model, fx);
+        return;
+    }
+    fetchNextSummaryChunk(model, fx);
 }
 
 fn startAssemble(model: *Model, fx: *Effects) void {
     model.phase = .saving;
     model.status_detail.set("Writing Markdown and cleaning temporary transcription files.");
-    if (model.summary_failed) {
-        fx.spawn(.{
-            .key = key_assemble,
-            .argv = &.{
-                model.helper_path.text(),
-                "assemble",
-                "--summary",
-                model.summary_path.text(),
-                "--transcript",
-                model.transcript_path.text(),
-                "--note",
-                model.note_path.text(),
-                "--cleanup",
-                model.whisper_audio_path.text(),
-                "--summary-error",
-                model.summary_error.text(),
-            },
-            .output = .collect,
-            .on_exit = Effects.exitMsg(.assemble_exited),
-        });
-    } else {
-        fx.spawn(.{
-            .key = key_assemble,
-            .argv = &.{
-                model.helper_path.text(),
-                "assemble",
-                "--summary",
-                model.summary_path.text(),
-                "--transcript",
-                model.transcript_path.text(),
-                "--note",
-                model.note_path.text(),
-                "--cleanup",
-                model.whisper_audio_path.text(),
-            },
-            .output = .collect,
-            .on_exit = Effects.exitMsg(.assemble_exited),
-        });
-    }
+    notes.assemble(
+        model.io,
+        std.heap.page_allocator,
+        model.note_path.text(),
+        model.transcript_path.text(),
+        model.whisper_audio_path.text(),
+        if (model.summary_failed) null else model.summary_draft.text(),
+        model.summary_error.text(),
+        !model.replaying,
+    ) catch |err| {
+        failWithError(model, "Could not assemble the Markdown note.", err);
+        if (model.quit_after_save) fx.quitApp();
+        return;
+    };
+    markSaved(model, fx);
 }
 
-fn parseCaptureLine(model: *Model, line: []const u8, fx: *Effects) void {
-    if (std.mem.startsWith(u8, line, "STARTED\t")) {
-        var fields = std.mem.splitScalar(u8, line, '\t');
-        _ = fields.next();
-        const note = fields.next() orelse return model.fail("Capture helper returned an incomplete note path.");
-        const audio = fields.next() orelse return model.fail("Capture helper returned an incomplete audio path.");
-        const whisper_audio = fields.next() orelse return model.fail("Capture helper returned an incomplete Whisper path.");
-        const transcript_root = fields.next() orelse return model.fail("Capture helper returned an incomplete transcript root.");
-        const transcript = fields.next() orelse return model.fail("Capture helper returned an incomplete transcript path.");
-        const summary = fields.next() orelse return model.fail("Capture helper returned an incomplete summary path.");
-        model.note_path.set(note);
-        model.audio_path.set(audio);
-        model.whisper_audio_path.set(whisper_audio);
-        model.transcript_root.set(transcript_root);
-        model.transcript_path.set(transcript);
-        model.summary_path.set(summary);
-        model.phase = .recording;
-        model.status_detail.set("System audio and microphone are being captured.");
-        fx.startTimer(.{
-            .key = key_recording_timer,
-            .interval_ms = 1000,
-            .mode = .repeating,
-            .on_fire = Effects.timerMsg(.recording_tick),
-        });
+fn setSummaryFailure(model: *Model, detail: []const u8) void {
+    model.summary_failed = true;
+    model.summary_error.set(detail);
+}
+
+fn fetchNextSummaryChunk(model: *Model, fx: *Effects) void {
+    if (model.summary_offset > model.summary_transcript_len) {
+        setSummaryFailure(model, "The transcript changed while it was being summarized.");
+        startAssemble(model, fx);
         return;
     }
-    if (std.mem.startsWith(u8, line, "ERROR\t")) {
-        const detail = line["ERROR\t".len..];
-        model.capture_error.set(detail);
-        model.status_detail.set(detail);
+    if (model.summary_offset == model.summary_transcript_len) {
+        startAssemble(model, fx);
+        return;
     }
+
+    // The lookahead lets buildRequest stop before a UTF-8 code point that
+    // crosses its preferred chunk boundary.
+    var transcript_buffer: [notes.transcript_read_bytes]u8 = undefined;
+    const expected = @min(transcript_buffer.len, model.summary_transcript_len - model.summary_offset);
+    const transcript = notes.readTranscriptChunk(
+        model.io,
+        model.transcript_path.text(),
+        model.summary_offset,
+        transcript_buffer[0..expected],
+    ) catch {
+        setSummaryFailure(model, "The transcript could not be read for summarization.");
+        startAssemble(model, fx);
+        return;
+    };
+    if (transcript.len != expected) {
+        setSummaryFailure(model, "The transcript changed while it was being summarized.");
+        startAssemble(model, fx);
+        return;
+    }
+
+    var body_buffer: [native_sdk.max_effect_fetch_payload_bytes]u8 = undefined;
+    const request = notes.buildRequest(
+        model.summary_draft.text(),
+        transcript,
+        &body_buffer,
+    ) catch |err| {
+        var detail_buffer: [320]u8 = undefined;
+        const detail = std.fmt.bufPrint(&detail_buffer, "Could not encode the next bounded OpenAI request ({s}).", .{@errorName(err)}) catch "Could not encode the next bounded OpenAI request.";
+        setSummaryFailure(model, detail);
+        startAssemble(model, fx);
+        return;
+    };
+    model.summary_offset += request.transcript_bytes;
+    model.summary_chunks += 1;
+
+    var authorization_buffer: ["Bearer ".len + max_api_key]u8 = undefined;
+    const authorization = std.fmt.bufPrint(&authorization_buffer, "Bearer {s}", .{model.api_key.text()}) catch {
+        setSummaryFailure(model, "The OpenAI API key is too long to send safely.");
+        startAssemble(model, fx);
+        return;
+    };
+    const headers = [_]std.http.Header{
+        .{ .name = "authorization", .value = authorization },
+        .{ .name = "content-type", .value = "application/json" },
+        .{ .name = "cache-control", .value = "no-store" },
+    };
+    var status_buffer: [max_status]u8 = undefined;
+    const status = std.fmt.bufPrint(&status_buffer, "Summarizing transcript chunk {d} with OpenAI.", .{model.summary_chunks}) catch "Summarizing the next transcript chunk with OpenAI.";
+    model.status_detail.set(status);
+    fx.fetch(.{
+        .key = key_summarize,
+        .method = .POST,
+        .url = "https://api.openai.com/v1/responses",
+        .headers = &headers,
+        .body = request.body,
+        .timeout_ms = 600_000,
+        .on_response = Effects.responseMsg(.summary_response),
+    });
+}
+
+fn summaryResponseFailure(model: *Model, response: native_sdk.EffectResponse) void {
+    var detail_buffer: [320]u8 = undefined;
+    const detail = if (response.outcome != .ok)
+        std.fmt.bufPrint(&detail_buffer, "The OpenAI request failed ({s}).", .{@tagName(response.outcome)}) catch "The OpenAI request failed."
+    else if (response.truncated)
+        "The OpenAI response exceeded the SDK response limit."
+    else
+        std.fmt.bufPrint(&detail_buffer, "The OpenAI endpoint returned HTTP {d}.", .{response.status}) catch "The OpenAI endpoint returned an error.";
+    setSummaryFailure(model, detail);
+}
+
+fn markSaved(model: *Model, fx: *Effects) void {
+    model.phase = .saved;
+    model.latest_note_path.set(model.note_path.text());
+    model.latest_audio_path.set(model.audio_path.text());
+    if (model.summary_failed) {
+        model.status_detail.set("Saved the transcript and audio. Summary generation failed; the note explains why.");
+    } else {
+        model.status_detail.set("Markdown note and audio saved in ~/MeetingNotes.");
+    }
+    if (model.quit_after_save) fx.quitApp();
 }
 
 pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
@@ -654,25 +802,105 @@ pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
                 setKeychainFailure(model, "delete");
             }
         },
-        .capture_line => |line| parseCaptureLine(model, line.line, fx),
-        .stop_exited => |exit| {
-            if (!exitedSuccessfully(exit)) {
-                model.phase = .recording;
-                model.status_detail.set(exitDetail(exit, "Could not signal the recorder to stop. Try Stop again."));
+        .capture_access => |event| {
+            if (model.cancel_start) {
+                model.cancel_start = false;
+                model.phase = .idle;
+                model.status_detail.set("Recording start cancelled.");
+                if (model.quit_after_save) fx.quitApp();
+                return;
+            }
+            if (model.phase != .starting) return;
+            if (event.source == .microphone and event.status == .authorized) {
+                model.status_detail.set("Checking Screen & System Audio Recording access.");
+                fx.audioCaptureAccess(.{
+                    .key = key_system_audio_access,
+                    .source = .system_audio,
+                    .action = .request,
+                    .on_event = Effects.audioCaptureAccessMsg(.capture_access),
+                });
+            } else if (event.source == .system_audio and event.status == .authorized and !event.restart_required) {
+                beginNativeCapture(model, fx);
+            } else if (event.source == .microphone) {
+                model.fail(switch (event.status) {
+                    .denied, .restricted => "Microphone access was denied. Enable it in System Settings > Privacy & Security > Microphone.",
+                    .unavailable => "Microphone capture is unavailable on this host.",
+                    else => "Microphone access is required before recording can start.",
+                });
+            } else if (event.restart_required) {
+                model.fail("Screen & System Audio Recording access changed. Quit and reopen Local Meeting Notes before recording.");
+            } else {
+                model.fail(switch (event.status) {
+                    .unavailable => "System-audio capture is unavailable on this host.",
+                    else => "Enable Local Meeting Notes in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen the app.",
+                });
             }
         },
-        .capture_exited => |exit| {
-            fx.cancelTimer(key_recording_timer);
-            if (exitedSuccessfully(exit) and !model.whisper_audio_path.empty()) {
-                model.capture_completed = true;
-                startWhisper(model, fx);
-            } else {
-                const fallback = if (model.capture_error.empty())
-                    "Audio capture failed before producing a usable recording."
-                else
-                    model.capture_error.text();
-                model.fail(exitDetail(exit, fallback));
-                if (model.quit_after_save) fx.quitApp();
+        .capture => |event| {
+            if (!model.capture_requested) return;
+            switch (event.state) {
+                .started => {
+                    if (model.phase == .stopping) {
+                        fx.stopAudioCapture();
+                    } else {
+                        model.phase = .recording;
+                        model.status_detail.set("System audio and microphone are streaming into the app.");
+                        fx.startTimer(.{
+                            .key = key_recording_timer,
+                            .interval_ms = 1000,
+                            .mode = .repeating,
+                            .on_fire = Effects.timerMsg(.recording_tick),
+                        });
+                    }
+                },
+                .readable => requestCaptureRead(model, fx),
+                .stopped => {
+                    fx.cancelTimer(key_recording_timer);
+                    model.capture_terminal_seen = true;
+                    model.phase = .stopping;
+                    requestCaptureRead(model, fx);
+                },
+                .failed => {
+                    fx.cancelTimer(key_recording_timer);
+                    model.capture_terminal_seen = true;
+                    model.capture_terminal_failed = true;
+                    model.capture_error.set(captureReasonDetail(event.reason));
+                    model.phase = .stopping;
+                    model.status_detail.set("Capture failed; preserving the buffered audio.");
+                    requestCaptureRead(model, fx);
+                },
+                .rejected => failAndDiscardCapture(model, fx, captureReasonDetail(event.reason)),
+            }
+        },
+        .capture_read => |event| {
+            if (!model.capture_requested) return;
+            model.capture_read_pending = false;
+            switch (event.state) {
+                .chunk => {
+                    model.audio_writer.append(
+                        event.system_pcm,
+                        event.microphone_pcm,
+                        event.frames,
+                        2,
+                    ) catch |err| {
+                        fx.discardAudioCapture();
+                        model.audio_writer.discard();
+                        model.capture_requested = false;
+                        failWithError(model, "Could not consume the captured PCM stream.", err);
+                        if (model.quit_after_save) fx.quitApp();
+                        return;
+                    };
+                    model.system_gap_frames += event.system_gap_frames;
+                    model.microphone_gap_frames += event.microphone_gap_frames;
+                    if (event.end_of_stream) {
+                        finishCapture(model, fx);
+                    } else if (event.remaining_frames > 0 or model.capture_terminal_seen) {
+                        requestCaptureRead(model, fx);
+                    }
+                },
+                .empty => if (model.capture_terminal_seen) requestCaptureRead(model, fx),
+                .ended => finishCapture(model, fx),
+                .rejected => failAndDiscardCapture(model, fx, "The Native SDK rejected an audio stream read."),
             }
         },
         .whisper_exited => |exit| {
@@ -683,27 +911,31 @@ pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
                 if (model.quit_after_save) fx.quitApp();
             }
         },
-        .summarize_exited => |exit| {
-            if (!exitedSuccessfully(exit)) {
-                model.summary_failed = true;
-                model.summary_error.set(exitDetail(exit, "The summarizer failed."));
+        .summary_response => |response| {
+            if (response.outcome != .ok or response.status < 200 or response.status >= 300 or response.truncated) {
+                summaryResponseFailure(model, response);
+                startAssemble(model, fx);
+                return;
             }
-            startAssemble(model, fx);
-        },
-        .assemble_exited => |exit| {
-            if (exitedSuccessfully(exit)) {
-                model.phase = .saved;
-                model.latest_note_path.set(model.note_path.text());
-                model.latest_audio_path.set(model.audio_path.text());
-                if (model.summary_failed) {
-                    model.status_detail.set("Saved the transcript and audio. Summary generation failed; the note explains why.");
-                } else {
-                    model.status_detail.set("Markdown note and audio saved in ~/MeetingNotes.");
-                }
-                if (model.quit_after_save) fx.quitApp();
+            const summary = notes.extractSummary(std.heap.page_allocator, response.body) catch |err| {
+                var detail_buffer: [320]u8 = undefined;
+                const detail = std.fmt.bufPrint(&detail_buffer, "The OpenAI response could not be parsed ({s}).", .{@errorName(err)}) catch "The OpenAI response could not be parsed.";
+                setSummaryFailure(model, detail);
+                startAssemble(model, fx);
+                return;
+            };
+            defer std.heap.page_allocator.free(summary);
+            if (summary.len > notes.max_draft_bytes) {
+                setSummaryFailure(model, "The evolving summary exceeded the app's bounded draft size.");
+                startAssemble(model, fx);
+                return;
+            }
+            model.summary_draft.set(summary);
+            if (model.summary_offset < model.summary_transcript_len) {
+                model.status_detail.set("Reading the next local transcript chunk.");
+                fetchNextSummaryChunk(model, fx);
             } else {
-                model.fail(exitDetail(exit, "Could not assemble the Markdown note."));
-                if (model.quit_after_save) fx.quitApp();
+                startAssemble(model, fx);
             }
         },
         .recording_tick => |timer| {
@@ -786,23 +1018,12 @@ fn setInitialPaths(model: *Model, init: std.process.Init) void {
         model.notes_dir.set(value);
     } else |_| {}
 
-    var data_dir_buffer: [max_path]u8 = undefined;
-    const env = native_sdk.debug.envFromMap(init.environ_map);
-    if (app_dirs.resolveOne(.{ .name = "Local Meeting Notes" }, app_dirs.currentPlatform(), env, .data, &data_dir_buffer)) |data_dir| {
-        model.settings_dir.set(data_dir);
-    } else |_| {
-        model.settings_dir.set("/private/tmp/local-meeting-notes");
-    }
-
     var executable_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const executable_len = std.process.executablePath(init.io, &executable_buffer) catch 0;
     const executable = executable_buffer[0..executable_len];
     const bin_dir = std.fs.path.dirname(executable) orelse "";
     const parent = std.fs.path.dirname(bin_dir) orelse "";
     if (std.mem.eql(u8, std.fs.path.basename(parent), "Contents")) {
-        if (std.fmt.bufPrint(&buffer, "{s}/Helpers/meeting-notes-helper", .{parent})) |value| {
-            model.helper_path.set(value);
-        } else |_| {}
         if (std.fmt.bufPrint(&buffer, "{s}/Resources/bin/whisper-cli", .{parent})) |value| {
             model.whisper_cli_path.set(value);
         } else |_| {}
@@ -811,9 +1032,6 @@ fn setInitialPaths(model: *Model, init: std.process.Init) void {
         } else |_| {}
     } else {
         const project_dir = std.fs.path.dirname(parent) orelse ".";
-        if (std.fmt.bufPrint(&buffer, "{s}/assets/bin/meeting-notes-helper", .{project_dir})) |value| {
-            model.helper_path.set(value);
-        } else |_| {}
         if (std.fmt.bufPrint(&buffer, "{s}/assets/bin/whisper-cli", .{project_dir})) |value| {
             model.whisper_cli_path.set(value);
         } else |_| {}
@@ -824,7 +1042,12 @@ fn setInitialPaths(model: *Model, init: std.process.Init) void {
 }
 
 pub fn initialModel(init: std.process.Init) Model {
-    var model = Model{};
+    const replaying = init.environ_map.get("NATIVE_SDK_SESSION_REPLAY") != null;
+    var model = Model{
+        .io = init.io,
+        .audio_writer = audio.Writer.init(init.io, !replaying),
+        .replaying = replaying,
+    };
     setInitialPaths(&model, init);
     return model;
 }
@@ -871,4 +1094,6 @@ pub fn main(init: std.process.Init) !void {
 
 test {
     _ = @import("tests.zig");
+    _ = @import("audio_writer.zig");
+    _ = @import("notes.zig");
 }

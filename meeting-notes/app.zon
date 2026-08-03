@@ -6,7 +6,11 @@
     .version = "0.4.0",
     .icons = .{"assets/icon.png"},
     .platforms = .{"macos"},
-    .permissions = .{ "view", "command", "filesystem", "network", "microphone", "credentials" },
+    .permissions = .{ "view", "command", "filesystem", "network", "microphone", "system_audio", "credentials" },
+    .privacy = .{
+        .microphone_usage = "Local Meeting Notes records your microphone during meetings.",
+        .system_audio_usage = "Local Meeting Notes captures system audio during meetings.",
+    },
     .capabilities = .{ "native_views", "gpu_surfaces", "tray" },
     .webview_layer = "exclude",
     .shell = .{
