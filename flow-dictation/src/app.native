@@ -15,7 +15,7 @@
       <panel padding="18" background="surface" radius="lg" border-color="border" label="Current status">
         <column gap="8">
           <text size="sm" foreground="text_muted">CURRENT STATUS</text>
-          <text wrap="true" label="{status}"><span weight="bold">{status}</span></text>
+          <text label="{status}"><span weight="bold">{status}</span></text>
           <text size="sm" foreground="text_muted">Default hold-to-talk shortcut: Command + Shift + Space</text>
         </column>
       </panel>
