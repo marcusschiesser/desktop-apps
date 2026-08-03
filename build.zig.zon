@@ -4,7 +4,11 @@
     .version = "0.4.0",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .native_sdk = .{ .path = "node_modules/@native-sdk/cli" },
+        // Immutable head of vercel-labs/native#264 (reliable audio streams).
+        .native_sdk = .{
+            .url = "https://github.com/marcusschiesser/native/archive/ca2de190625af6987eb5b2c2ad8b2bcbd43c1a4b.tar.gz",
+            .hash = "native_sdk-0.1.0-hzDzQgR87gESL_epKIpfD-4TPwSw7pg4LF4GFAkS4_g1",
+        },
     },
     .paths = .{
         "build.zig",

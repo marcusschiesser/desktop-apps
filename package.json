@@ -4,15 +4,11 @@
   "private": true,
   "description": "A local-first macOS meeting-notes tray app built with Vercel Native SDK.",
   "scripts": {
-    "helper": "sh scripts/build-helper.sh",
     "setup:whisper": "sh scripts/setup-whisper.sh",
-    "check": "native check .",
-    "test": "npm run helper && assets/bin/meeting-notes-helper self-test && ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native test . --yes",
-    "dev": "npm run helper && ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native dev . --yes",
-    "build": "npm run helper && ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native build . --yes",
+    "check": "sh scripts/native-pr.sh check .",
+    "test": "sh scripts/native-pr.sh test . --yes",
+    "dev": "sh scripts/native-pr.sh dev . --yes",
+    "build": "sh scripts/native-pr.sh build . --yes",
     "package:mac": "sh scripts/package-macos.sh"
-  },
-  "devDependencies": {
-    "@native-sdk/cli": "0.6.1"
   }
 }

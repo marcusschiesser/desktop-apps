@@ -1,5 +1,4 @@
 #import <Foundation/Foundation.h>
-#import <CoreGraphics/CoreGraphics.h>
 #import <Security/Security.h>
 
 static NSString *const MeetingNotesKeychainService = @"com.local.meetingnotes.openai";
@@ -87,12 +86,4 @@ int meeting_notes_keychain_delete(void) {
 
 int meeting_notes_keychain_last_status(void) {
     return (int)MeetingNotesLastKeychainStatus;
-}
-
-int meeting_notes_screen_capture_preflight(void) {
-    return CGPreflightScreenCaptureAccess() ? 1 : 0;
-}
-
-int meeting_notes_screen_capture_request(void) {
-    return CGRequestScreenCaptureAccess() ? 1 : 0;
 }
