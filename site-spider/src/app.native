@@ -1,0 +1,90 @@
+<column background="background">
+  <row height="56" padding="14" cross="center" background="surface" window-drag="true" label="Site Spider header">
+    <column gap="2">
+      <text><span weight="bold" scale="1.25">Site Spider</span></text>
+      <text size="sm" foreground="text_muted">A permissioned, local-first technical audit</text>
+    </column>
+    <spacer grow="1" />
+    <if test="{running}">
+      <badge variant="secondary">CRAWLING</badge>
+    </if>
+    <else>
+      <badge variant="outline">LOCAL</badge>
+    </else>
+  </row>
+  <separator />
+
+  <scroll grow="1" label="SEO audit controls">
+    <column padding="24" gap="16">
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Site to crawl">
+        <column gap="10">
+          <text><span weight="bold" scale="1.1">Site URL</span></text>
+          <input
+            text="{urlText}"
+            on-input="url_edited"
+            on-submit="start_crawl"
+            placeholder="https://example.com"
+            disabled="{running}"
+            label="Site URL"
+          />
+          <text size="sm" foreground="text_muted" wrap="true">Only same-origin HTTP(S) pages are queued. Fragments are removed, robots.txt and nofollow are respected, and requests are rate-limited.</text>
+        </column>
+      </panel>
+
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Permission acknowledgement">
+        <column gap="10">
+          <row gap="10" cross="center">
+            <if test="{acknowledged}">
+              <icon name="check" width="18" height="18" foreground="success" />
+            </if>
+            <else>
+              <icon name="info" width="18" height="18" foreground="text_muted" />
+            </else>
+            <text wrap="true"><span weight="bold">I own this site or have explicit permission to crawl it.</span></text>
+          </row>
+          <button variant="outline" text="{permissionLabel}" on-press="toggle_permission" disabled="{running}" label="Toggle permission acknowledgement"></button>
+        </column>
+      </panel>
+
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Crawl limit">
+        <column gap="10">
+          <text><span weight="bold" scale="1.1">URL cap</span></text>
+          <button-group>
+            <button selected="{limit25Selected}" on-press="limit_25" disabled="{running}">25</button>
+            <button selected="{limit100Selected}" on-press="limit_100" disabled="{running}">100</button>
+            <button selected="{limit250Selected}" on-press="limit_250" disabled="{running}">250</button>
+          </button-group>
+          <text size="sm" foreground="text_muted">Selected cap: {maxPages} pages</text>
+        </column>
+      </panel>
+
+      <row gap="10">
+        <button variant="primary" icon="play" on-press="start_crawl" disabled="{startDisabled}" label="Start site audit">Start audit</button>
+        <button variant="destructive" icon="x" on-press="cancel_crawl" disabled="{cancelDisabled}" label="Cancel site audit">Cancel</button>
+        <button variant="outline" icon="external-link" on-press="open_report" disabled="{openDisabled}" label="Open latest report">Open report</button>
+      </row>
+
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Crawl status">
+        <column gap="8">
+          <text size="sm" foreground="text_muted">STATUS</text>
+          <text wrap="true"><span weight="bold">{status}</span></text>
+          <separator />
+          <text size="sm" foreground="text_muted">REPORT</text>
+          <text size="sm" wrap="true">{reportStatus}</text>
+        </column>
+      </panel>
+
+      <panel padding="18" background="surface" radius="lg" border-color="border" label="Audit coverage">
+        <column gap="8">
+          <text><span weight="bold" scale="1.1">What the report checks</span></text>
+          <row gap="8" cross="center"><icon name="check" width="16" height="16" foreground="success" /><text>HTTP status, redirect chains, canonical and robots directives</text></row>
+          <row gap="8" cross="center"><icon name="check" width="16" height="16" foreground="success" /><text>Titles, descriptions, H1s, internal links and missing image alt text</text></row>
+          <row gap="8" cross="center"><icon name="check" width="16" height="16" foreground="success" /><text>Duplicate metadata, broken links and indexability conflicts</text></row>
+          <row gap="8" cross="center"><icon name="download" width="16" height="16" foreground="text_muted" /><text>Reproducible CSV data plus a self-contained HTML report</text></row>
+        </column>
+      </panel>
+
+      <text size="sm" foreground="text_muted" wrap="true">No accounts, telemetry, hosted control plane, backlink database, keyword corpus, or production-site changes. JavaScript rendering is deliberately outside this focused local MVP.</text>
+    </column>
+  </scroll>
+</column>
