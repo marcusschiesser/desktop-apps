@@ -2,7 +2,7 @@
 
 A local-first native desktop replacement for the core audit loop of [Screaming Frog SEO Spider](https://canivibecodeit.com/screaming-frog-seo-spider), built with [Vercel Native SDK](https://github.com/vercel-labs/native).
 
-It is deliberately aimed at software engineers, independent builders, and technical site owners who want a fast, reproducible audit without an account, hosted control plane, or web-scale SEO dataset.
+It is deliberately aimed at software engineers, independent builders, and technical site owners who want a fast, reproducible audit without an account, hosted control plane, or web-scale SEO dataset. The Codex-ready implementation specification is preserved in [`PROMPT.md`](PROMPT.md).
 
 ## What it does
 
