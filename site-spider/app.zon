@@ -1,0 +1,46 @@
+.{
+    .id = "dev.marcusschiesser.site-spider",
+    .name = "site-spider",
+    .display_name = "Site Spider",
+    .description = "Local-first technical SEO crawling and audit reports.",
+    .version = "0.1.0",
+    .platforms = .{"macos"},
+    .permissions = .{ "view", "command", "filesystem", "network" },
+    .capabilities = .{ "native_views", "gpu_surfaces" },
+    .webview_layer = "exclude",
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Site Spider",
+                .width = 780,
+                .height = 620,
+                .min_width = 680,
+                .min_height = 540,
+                .restore_state = false,
+                .restore_policy = "center_on_primary",
+                .views = .{
+                    .{
+                        .label = "site-spider-canvas",
+                        .kind = "gpu_surface",
+                        .fill = true,
+                        .role = "Technical SEO crawler",
+                        .accessibility_label = "Site Spider",
+                        .gpu_backend = "metal",
+                        .gpu_pixel_format = "bgra8_unorm",
+                        .gpu_present_mode = "timer",
+                        .gpu_alpha_mode = "opaque",
+                        .gpu_color_space = "srgb",
+                        .gpu_vsync = true,
+                    },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{},
+            .external_links = .{ .action = "deny" },
+        },
+    },
+}
