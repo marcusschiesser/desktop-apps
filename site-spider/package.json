@@ -2,14 +2,15 @@
   "name": "site-spider",
   "version": "0.1.0",
   "private": true,
-  "description": "A local-first technical SEO crawler built with Vercel Native SDK.",
+  "description": "A local-first native desktop crawler for permissioned technical SEO audits.",
   "scripts": {
-    "check": "native check .",
-    "test:helper": "node --test tests/*.test.mjs",
-    "test:native": "ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native test . --yes",
-    "test": "npm run test:helper && npm run test:native",
-    "dev": "ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native dev . --yes",
-    "build": "ZIG_GLOBAL_CACHE_DIR=.native/zig-global-cache native build . --yes"
+    "helper": "sh scripts/build-helper.sh",
+    "test:go": "go test ./helper/...",
+    "test:helper": "npm run helper && assets/bin/seo-spider-helper self-test",
+    "check": "npm run helper && native check .",
+    "test": "npm run test:go && npm run test:helper && native check .",
+    "dev": "npm run helper && native dev . --yes",
+    "build": "npm run helper && native build . --yes"
   },
   "devDependencies": {
     "@native-sdk/cli": "0.8.0"
