@@ -1,0 +1,6 @@
+node_modules/
+.native/
+zig-cache/
+zig-out/
+.DS_Store
+*.log
