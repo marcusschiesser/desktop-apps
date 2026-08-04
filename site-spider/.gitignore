@@ -2,5 +2,7 @@ node_modules/
 .native/
 zig-cache/
 zig-out/
+assets/bin/
+data/
 .DS_Store
 *.log
