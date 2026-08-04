@@ -1,0 +1,36 @@
+name: Site Spider
+
+on:
+  push:
+    paths:
+      - "site-spider/**"
+      - ".github/workflows/site-spider.yml"
+  pull_request:
+    paths:
+      - "site-spider/**"
+      - ".github/workflows/site-spider.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-14
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: site-spider
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+      - name: Install Native SDK
+        run: npm install --no-audit --no-fund
+      - name: Test helper and validate native app
+        run: npm test
+      - name: Build release app
+        run: npm run build
