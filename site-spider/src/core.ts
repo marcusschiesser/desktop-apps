@@ -6,10 +6,8 @@ import {
   type TextInputEvent,
 } from "@native-sdk/core/text";
 
-type Bytes = Uint8Array;
-
-interface UrlDraft {
-  readonly bytes: Bytes;
+export interface UrlDraft {
+  readonly bytes: Uint8Array;
   readonly anchor: number;
   readonly focus: number;
   readonly compStart: number;
@@ -69,8 +67,8 @@ export interface Model {
   readonly maxPages: number;
   readonly running: boolean;
   readonly reportAvailable: boolean;
-  readonly status: Bytes;
-  readonly reportStatus: Bytes;
+  readonly status: Uint8Array;
+  readonly reportStatus: Uint8Array;
 }
 
 export type Msg =
@@ -81,13 +79,13 @@ export type Msg =
   | { readonly kind: "limit_250" }
   | { readonly kind: "start_crawl" }
   | { readonly kind: "cancel_crawl" }
-  | { readonly kind: "crawl_line"; readonly line: Bytes }
+  | { readonly kind: "crawl_line"; readonly line: Uint8Array }
   | { readonly kind: "crawl_exit"; readonly code: number }
-  | { readonly kind: "crawl_error"; readonly error: Bytes }
+  | { readonly kind: "crawl_error"; readonly error: Uint8Array }
   | { readonly kind: "open_report" }
-  | { readonly kind: "report_line"; readonly line: Bytes }
+  | { readonly kind: "report_line"; readonly line: Uint8Array }
   | { readonly kind: "report_exit"; readonly code: number }
-  | { readonly kind: "report_error"; readonly error: Bytes };
+  | { readonly kind: "report_error"; readonly error: Uint8Array };
 
 export const viewUnbound = [
   "url",
@@ -111,7 +109,7 @@ export function initialModel(): Model {
   };
 }
 
-export function urlText(model: Model): Bytes {
+export function urlText(model: Model): Uint8Array {
   return model.url.bytes;
 }
 
@@ -127,7 +125,7 @@ export function cancelDisabled(model: Model): boolean {
   return !model.running;
 }
 
-export function permissionLabel(model: Model): Bytes {
+export function permissionLabel(model: Model): Uint8Array {
   return model.acknowledged
     ? asciiBytes("Permission acknowledged")
     : asciiBytes("Acknowledge permission");
@@ -145,7 +143,7 @@ export function limit250Selected(model: Model): boolean {
   return model.maxPages === 250;
 }
 
-function limitArg(model: Model): Bytes {
+function limitArg(model: Model): Uint8Array {
   if (model.maxPages === 25) return asciiBytes("25");
   if (model.maxPages === 250) return asciiBytes("250");
   return asciiBytes("100");
@@ -178,7 +176,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
           status: asciiBytes("Starting permissioned crawl..."),
           reportStatus: asciiBytes("A new report is being generated."),
         },
-        Cmd.spawn<Msg>(
+        Cmd.spawn(
           [
             asciiBytes("assets/bin/seo-spider-helper"),
             asciiBytes("crawl"),
@@ -229,7 +227,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
       if (openDisabled(model)) return model;
       return [
         { ...model, reportStatus: asciiBytes("Opening latest HTML report...") },
-        Cmd.spawn<Msg>(
+        Cmd.spawn(
           [asciiBytes("assets/bin/seo-spider-helper"), asciiBytes("open-latest")],
           {
             key: "seo-open-report",
