@@ -18,6 +18,7 @@ xcrun swiftc \
 	-framework AVFoundation \
 	-framework CoreMedia \
 	-framework ScreenCaptureKit \
+	-framework SoundAnalysis \
 	"$project_dir/native/MeetingNotesHelper.swift" \
 	-o "$output"
 

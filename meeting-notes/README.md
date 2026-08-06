@@ -10,11 +10,13 @@ The app:
 1. Captures system audio and microphone audio with Apple ScreenCaptureKit.
 2. Mixes and converts both tracks with AVFoundation; no external audio tool is
    needed.
-3. Transcribes locally using a bundled `whisper.cpp` executable and the
+3. Uses macOS's local sound classifier to remove waiting-room silence before
+   the first detected speech, while retaining a short safety pre-roll.
+4. Transcribes locally using a bundled `whisper.cpp` executable and the
    multilingual medium model.
-4. Sends only the transcript to OpenAI GPT-5.6 Luna to produce exactly five
+5. Sends only the transcript to OpenAI GPT-5.6 Luna to produce exactly five
    summary bullets, decisions, and owner-attributed action items.
-5. Saves the Markdown note and retained `.wav` audio in `~/MeetingNotes`.
+6. Saves the Markdown note and retained `.wav` audio in `~/MeetingNotes`.
 
 ## Output
 

@@ -3,6 +3,7 @@ import AVFoundation
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
+import SoundAnalysis
 import Darwin
 
 private let lunaModel = "gpt-5.6-luna"
@@ -321,6 +322,155 @@ private final class StreamingAudioConverter {
     }
 }
 
+private let speechConfidenceThreshold = 0.6
+private let speechPreRollSeconds = 1.5
+
+private final class FirstSpeechObserver: NSObject, SNResultsObserving {
+    private let lock = NSLock()
+    private var detectedTime: TimeInterval?
+    private var analysisError: Error?
+
+    var firstSpeechTime: TimeInterval? {
+        lock.lock()
+        defer { lock.unlock() }
+        return detectedTime
+    }
+
+    var failure: Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        return analysisError
+    }
+
+    func request(_ request: SNRequest, didProduce result: SNResult) {
+        guard let result = result as? SNClassificationResult,
+              let speech = result.classification(forIdentifier: "speech"),
+              speech.confidence >= speechConfidenceThreshold else {
+            return
+        }
+        let start = result.timeRange.start.seconds
+        guard start.isFinite else {
+            return
+        }
+
+        lock.lock()
+        if let current = detectedTime {
+            detectedTime = min(current, start)
+        } else {
+            detectedTime = start
+        }
+        lock.unlock()
+    }
+
+    func request(_ request: SNRequest, didFailWithError error: Error) {
+        lock.lock()
+        if analysisError == nil {
+            analysisError = error
+        }
+        lock.unlock()
+    }
+
+    func requestDidComplete(_ request: SNRequest) {}
+}
+
+private func detectFirstSpeech(in audioURL: URL) throws -> TimeInterval? {
+    let analyzer = try SNAudioFileAnalyzer(url: audioURL)
+    let request = try SNClassifySoundRequest(classifierIdentifier: .version1)
+    guard request.knownClassifications.contains("speech") else {
+        throw HelperError.failed("The system sound classifier does not support speech detection")
+    }
+    let observer = FirstSpeechObserver()
+    try analyzer.add(request, withObserver: observer)
+    analyzer.analyze()
+    if let failure = observer.failure {
+        throw HelperError.failed("Speech detection failed: \(failure.localizedDescription)")
+    }
+    return observer.firstSpeechTime
+}
+
+private func makeTrimmedAudioCopy(
+    of audioURL: URL,
+    startingAt startTime: TimeInterval
+) throws -> URL {
+    let extensionName = audioURL.pathExtension.isEmpty ? "wav" : audioURL.pathExtension
+    let temporaryURL = audioURL.deletingLastPathComponent()
+        .appendingPathComponent(".\(audioURL.deletingPathExtension().lastPathComponent).trimmed-\(UUID().uuidString)")
+        .appendingPathExtension(extensionName)
+
+    do {
+        let inputFile = try AVAudioFile(forReading: audioURL)
+        let startFrame = AVAudioFramePosition(
+            (startTime * inputFile.processingFormat.sampleRate).rounded(.down)
+        )
+        guard startFrame > 0, startFrame < inputFile.length else {
+            throw HelperError.failed("The detected speech position is outside the captured audio")
+        }
+        inputFile.framePosition = startFrame
+
+        let outputFile = try AVAudioFile(
+            forWriting: temporaryURL,
+            settings: inputFile.fileFormat.settings,
+            commonFormat: inputFile.processingFormat.commonFormat,
+            interleaved: inputFile.processingFormat.isInterleaved
+        )
+        let capacity: AVAudioFrameCount = 16_384
+        while inputFile.framePosition < inputFile.length {
+            let remaining = inputFile.length - inputFile.framePosition
+            let frameCount = AVAudioFrameCount(min(AVAudioFramePosition(capacity), remaining))
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: inputFile.processingFormat,
+                frameCapacity: frameCount
+            ) else {
+                throw HelperError.failed("Could not allocate the trimmed audio buffer")
+            }
+            try inputFile.read(into: buffer, frameCount: frameCount)
+            if buffer.frameLength == 0 {
+                break
+            }
+            try outputFile.write(from: buffer)
+        }
+    } catch {
+        try? FileManager.default.removeItem(at: temporaryURL)
+        throw error
+    }
+
+    return temporaryURL
+}
+
+@discardableResult
+private func trimLeadingSilence(
+    audioURL: URL,
+    whisperAudioURL: URL
+) throws -> TimeInterval? {
+    guard let speechTime = try detectFirstSpeech(in: whisperAudioURL) else {
+        return nil
+    }
+    let trimStart = max(0, speechTime - speechPreRollSeconds)
+    guard trimStart > 0 else {
+        return 0
+    }
+
+    let trimmedAudio = try makeTrimmedAudioCopy(of: audioURL, startingAt: trimStart)
+    let trimmedWhisperAudio: URL
+    do {
+        trimmedWhisperAudio = try makeTrimmedAudioCopy(
+            of: whisperAudioURL,
+            startingAt: trimStart
+        )
+    } catch {
+        try? FileManager.default.removeItem(at: trimmedAudio)
+        throw error
+    }
+    defer {
+        try? FileManager.default.removeItem(at: trimmedAudio)
+        try? FileManager.default.removeItem(at: trimmedWhisperAudio)
+    }
+
+    _ = try FileManager.default.replaceItemAt(audioURL, withItemAt: trimmedAudio)
+    _ = try FileManager.default.replaceItemAt(whisperAudioURL, withItemAt: trimmedWhisperAudio)
+    return trimStart
+}
+
 private func renderCapturedAudio(
     sources: [URL],
     output: URL,
@@ -414,6 +564,17 @@ private func mixCapturedAudio(
         sampleRate: 16_000,
         channels: 1
     )
+
+    do {
+        if let trimStart = try trimLeadingSilence(
+            audioURL: paths.audio,
+            whisperAudioURL: paths.whisperAudio
+        ), trimStart > 0 {
+            writeLine(String(format: "TRIMMED\t%.3f", trimStart))
+        }
+    } catch {
+        writeLine("WARNING\tLeading-silence trimming failed: \(sanitizedLine(error.localizedDescription))")
+    }
 
     try? FileManager.default.removeItem(at: paths.rawSystem)
     try? FileManager.default.removeItem(at: paths.rawMicrophone)
